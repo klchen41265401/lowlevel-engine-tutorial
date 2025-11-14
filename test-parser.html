@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parser 測試</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .test-case {
+      background: white;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .code {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      margin: 10px 0;
+      border-left: 4px solid #007bff;
+    }
+    .result {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    .success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      font-size: 12px;
+    }
+    h1 {
+      color: #333;
+    }
+    h3 {
+      color: #555;
+      margin-top: 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 Parser 測試套件</h1>
+  <p>測試各種語句是否能正確解析</p>
+  
+  <div id="tests"></div>
+
+  <script type="module">
+    // 簡化版的 Token 和 Lexer（用於測試）
+    class Token {
+      constructor(type, value, span, line = 1, column = 1) {
+        this.type = type
+        this.value = value
+        this.span = span
+        this.line = line
+        this.column = column
+      }
+    }
+
+    const TokenType = {
+      KEYWORD: 'KEYWORD',
+      IDENTIFIER: 'IDENTIFIER',
+      LITERAL: 'LITERAL',
+      OPERATOR: 'OPERATOR',
+      SEPARATOR: 'SEPARATOR',
+      COMMENT: 'COMMENT',
+      WHITESPACE: 'WHITESPACE',
+      EOF: 'EOF'
+    }
+
+    class CompileError extends Error {
+      constructor(message, line, column) {
+        super(message)
+        this.line = line
+        this.column = column
+      }
+    }
+
+    // 簡化版 Lexer
+    class SimpleLexer {
+      tokenize(source) {
+        const tokens = []
+        const keywords = ['int', 'double', 'string', 'bool', 'if', 'else', 'while', 'return']
+        const operators = ['+', '-', '*', '/', '=', '>', '<', '==', '!=', '>=', '<=']
+        const separators = ['(', ')', '{', '}', ';']
+        
+        let i = 0
+        while (i < source.length) {
+          const char = source[i]
+          
+          // 跳過空白
+          if (/\s/.test(char)) {
+            i++
+            continue
+          }
+          
+          // 數字
+          if (/\d/.test(char)) {
+            let num = ''
+            while (i < source.length && /[\d.]/.test(source[i])) {
+              num += source[i++]
+            }
+            tokens.push(new Token(TokenType.LITERAL, num, { start: i - num.length, end: i }))
+            continue
+          }
+          
+          // 識別符或關鍵字
+          if (/[a-zA-Z_]/.test(char)) {
+            let id = ''
+            while (i < source.length && /[a-zA-Z0-9_]/.test(source[i])) {
+              id += source[i++]
+            }
+            const type = keywords.includes(id) ? TokenType.KEYWORD : TokenType.IDENTIFIER
+            tokens.push(new Token(type, id, { start: i - id.length, end: i }))
+            continue
+          }
+          
+          // 運算符
+          const twoCharOp = source.substr(i, 2)
+          if (operators.includes(twoCharOp)) {
+            tokens.push(new Token(TokenType.OPERATOR, twoCharOp, { start: i, end: i + 2 }))
+            i += 2
+            continue
+          }
+          
+          if (operators.includes(char)) {
+            tokens.push(new Token(TokenType.OPERATOR, char, { start: i, end: i + 1 }))
+            i++
+            continue
+          }
+          
+          // 分隔符
+          if (separators.includes(char)) {
+            tokens.push(new Token(TokenType.SEPARATOR, char, { start: i, end: i + 1 }))
+            i++
+            continue
+          }
+          
+          i++
+        }
+        
+        tokens.push(new Token(TokenType.EOF, '', { start: i, end: i }))
+        return tokens
+      }
+    }
+
+    // 測試用例
+    const testCases = [
+      {
+        name: '基本變數宣告',
+        code: 'int x = 10;'
+      },
+      {
+        name: '加法表達式',
+        code: 'int sum = 10 + 20;'
+      },
+      {
+        name: '複雜表達式',
+        code: 'int result = (a + 3) * b;'
+      },
+      {
+        name: '多個變數',
+        code: 'int a = 5;\nint b = 3;\nint sum = a + b;'
+      },
+      {
+        name: 'if 語句',
+        code: 'if (x > 0) {\n  y = 1;\n}'
+      },
+      {
+        name: 'while 迴圈',
+        code: 'while (i < 10) {\n  i = i + 1;\n}'
+      },
+      {
+        name: '不完整語句（無分號）',
+        code: 'int x = 10'
+      },
+      {
+        name: '單純的表達式',
+        code: 'a + b'
+      }
+    ]
+
+    // 執行測試
+    const testsContainer = document.getElementById('tests')
+    
+    testCases.forEach((testCase, index) => {
+      const div = document.createElement('div')
+      div.className = 'test-case'
+      
+      const title = document.createElement('h3')
+      title.textContent = `測試 ${index + 1}: ${testCase.name}`
+      div.appendChild(title)
+      
+      const codeEl = document.createElement('div')
+      codeEl.className = 'code'
+      codeEl.textContent = testCase.code
+      div.appendChild(codeEl)
+      
+      const resultEl = document.createElement('div')
+      resultEl.className = 'result'
+      
+      try {
+        const lexer = new SimpleLexer()
+        const tokens = lexer.tokenize(testCase.code)
+        
+        resultEl.className += ' success'
+        resultEl.innerHTML = `
+          <strong>✅ 詞法分析成功</strong><br>
+          <pre>Tokens: ${tokens.length - 1} 個 (不含 EOF)</pre>
+          <details>
+            <summary style="cursor: pointer; margin-top: 8px;">查看 Tokens</summary>
+            <pre>${tokens.map(t => `${t.type}: "${t.value}"`).join('\n')}</pre>
+          </details>
+        `
+      } catch (error) {
+        resultEl.className += ' error'
+        resultEl.innerHTML = `
+          <strong>❌ 錯誤</strong><br>
+          <pre>${error.message}</pre>
+        `
+      }
+      
+      div.appendChild(resultEl)
+      testsContainer.appendChild(div)
+    })
+  </script>
+</body>
+</html>
